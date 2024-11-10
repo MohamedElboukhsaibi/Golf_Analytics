@@ -1,0 +1,1270 @@
+---
+title: "GOLF"
+subtitle: "Analyse de données exploratoire"
+author: "Mohamed El Boukhsaibi et Paul Vidal"
+date: "`r Sys.Date()`"
+output: pdf_document
+toc: true
+toc-title : "Table des matières "
+number-sections: true
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+
+#Librairie 
+
+library(factoextra)
+library(FactoMineR)
+library(corrplot)
+library(forcats)
+library(tidyverse)
+library(knitr)
+library(DT)
+library(kableExtra)
+library(ggplot2)
+library(dplyr)
+library(data.table)
+library(ggpubr)
+library(gridExtra)
+library(ggrepel)
+library(viridis)
+library(patchwork)
+library(tibble)
+library(explor)
+col_ind <- "#008EA0FF" #"#357EBDFF"
+col_var <- "#C71000FF"#D43F3AFF"
+col_bar <- "#8A419888"#5CB85CFF"
+logodark <- "#5A9599EE"
+corail <- "#FF6348FF"
+orange <- "#FF6F00FF"
+accent <- "#00817c"
+alert <- "#e64173"
+violet <- "#8A4198FF"
+# pal_accent_3 <- c("#00817c", "#951078", "#789510")
+# "#789510" vert anis
+pal_js <- c(col_ind, "deeppink1", "seagreen2", orange, violet,  col_var)
+```
+
+```{r theme graphique}
+theme_set(theme_minimal()) 
+```
+
+```{r}
+# Réglages et formatage base de données
+# Fonctions 
+# Pourcentage 
+
+pourcent <-  function(x) {
+  return(x * 100)
+}
+
+# Renomer la derniere colonne et derniere ligne des tableau de contingence 
+rename_total <- function(table) {
+  colnames(table)[ncol(table)] <- "Total"
+  rownames(table)[nrow(table)] <- "Total"
+  return(table)
+}
+
+# Forme du tableau de Contingence 
+format_table <- function(tab) {
+  formatt_tab <- tab %>%
+    kable() %>%
+    kable_styling(
+      full_width = FALSE,
+      position = "center",
+      font_size = 30,
+      bootstrap_options = c("striped", "hover", "condensed")
+    ) %>%
+    column_spec(c(1, 7), bold = TRUE) %>%
+    row_spec(nrow(tab), bold = TRUE)
+  
+  return(formatt_tab)
+}
+```
+
+```{r}
+# 1. Chargement des données
+golf_data <- read.csv(file = "golf_dataset_wide_format1.csv", header=T, row.names=1)
+```
+
+```{r}
+# On fabrique une nouvelle variable qui va indiquer ualitativement le niveau de fréquantation. 
+breaks <- quantile(golf_data$Crowdedness, probs = c(0, 1/5, 2/5, 3/5, 4/5, 1), na.rm = TRUE)
+labels <- c("Très faible","Faible","Moyenne", "Élevé", "Très élevé")
+golf_data$Crowdedness_Cat <- cut(golf_data$Crowdedness, breaks = breaks, labels = labels, include.lowest = TRUE)
+
+# On déplace la nouelle variable Crowdness_cat a coté de Crowdness 
+golf_data <- golf_data[c(1:9, 24, 10:23)]
+
+# Je renomme les jours de la semaine numérotés de 0 a 6 
+golf_data$Weekday <- factor(golf_data$Weekday, 
+                            levels = c(0, 1, 2, 3, 4, 5, 6),
+                            labels = c("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"))
+
+# Je renomme les modalité Windy par "Venteux" et "Non Venteux" 
+golf_data$Windy <- factor(golf_data$Windy, 
+                            levels = c(0, 1),
+                            labels = c("Jour venteux", "Jour non venteux"))
+
+golf_data$Outlook <- factor(golf_data$Outlook, 
+                            levels = c("sunny", "overcast", "rainy", "snow"),
+                            labels = c("soleil", "couvert", "pluie", "neige"))
+
+# Je renomme les modalités prises par les variables Play_A,..., Play_G par "Le Golfeur n'a joué" quand la modalité est 0 et "Le golfeur a joué" quand la modalité vaut 1. 
+
+joueurs <- c("Play_A", "Play_B", "Play_C", "Play_D", "Play_E", "Play_F", "Play_G")
+
+# Fonction pour remplacer 0 et 1 
+modifier_joueur <- function(x) {
+    factor(x, levels = c(0, 1), labels = c("Le golfeur n'a pas joué", "Le golfeur a joué"))
+}
+
+golf_data[joueurs] <- lapply(golf_data[joueurs],modifier_joueur)
+golf_data$Holiday <- as.factor(golf_data$Holiday) 
+golf_data$Season <- as.factor(golf_data$Season)
+```
+
+```{r}
+## Création des tableaux de contingence 
+
+# Fréquentation - Jour de la semaine 
+tab1<- table(golf_data$Weekday, golf_data$Crowdedness_Cat) |> as.data.frame.matrix()
+tab1_t <-tibble(Jour = as_factor(rownames(tab1)),tab1) |> pivot_longer(cols = 2:6, names_to = "Frequentation",values_to= "Effectifs") 
+tab1_t$Frequentation <- factor(tab1_t$Frequentation, 
+                               levels = c("Très faible", "Faible", "Moyenne", "Élevé", "Très élevé"))
+# Fréquantion - Mois
+tab2 <- table(golf_data$Month, golf_data$Crowdedness_Cat) |> as.data.frame.matrix() 
+tab2_t <-tibble(Mois = as_factor(rownames(tab2)),tab2) |> pivot_longer(cols = 2:6, names_to = "Frequentation",values_to= "Effectifs")
+tab2_t$Frequentation <- factor(tab2_t$Frequentation, 
+                               levels = c("Très faible", "Faible", "Moyenne", "Élevé", "Très élevé"))
+tab2_t$Mois <- factor(tab2_t$Mois, 
+                               levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug","Sep", "Oct", "Nov", "Dec"))
+
+golf_data$Month <- factor(golf_data$Month, levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))
+
+# Fréquantion - Outlook
+tab3 <- table(golf_data$Outlook, golf_data$Crowdedness_Cat) |> as.data.frame.matrix() 
+tab3_t <-tibble(Meteo = as_factor(rownames(tab3)),tab3) |> pivot_longer(cols = 2:6, names_to = "Frequentation",values_to= "Effectifs")
+tab3_t$Frequentation <- factor(tab3_t$Frequentation, 
+                               levels = c("Très faible", "Faible", "Moyenne", "Élevé", "Très élevé"))
+```
+
+```{r}
+# Colonnes qualitatives
+quali <- c(1:4,7,8, 10,11, 13, 15, 17 , 19, 21, 23)
+
+# Colonnes quantitatives
+quanti <- c(5:6, 9, 12, 14,16, 18, 20, 22, 24)
+```
+\newpage
+
+# Introduction - Présentation de la base de données
+
+Dans le monde dynamique du golf, comprendre les interactions entre les conditions environnementales, les caractéristiques temporelles et les comportements des joueurs est essentiel pour améliorer l'expérience de jeu et la gestion des terrains de golf. Le travail présenté ici se penche sur un ensemble de données exhaustif et méticuleusement construit par Samy Baladram, qui vise à capturer l'essence de ces interactions dans le cadre du golf.
+
+L'ensemble de données englobe une période de 3 ans, s'étalant du 1er janvier 2021 au 31 décembre 2023, offrant ainsi une vue d'ensemble complète et diversifiée des habitudes de jeu. La base de données se concentre sur sept joueurs de golf distincts, chacun avec des préférences et des styles de jeu qui leur sont propres, reflétant une variété de profils typiques des joueurs de golf. Les données, bien que générées synthétiquement, s'inspirent étroitement des conditions réelles de Sendai, au Japon, où réside l'auteur, et visent à simuler fidèlement les facteurs influençant le jeu de golf.
+
+Ce compte rendu explore les diverses variables quantitatives et qualitatives enregistrées. Les variables quantitatives incluent des mesures telles que la température, le taux d'humidité, le niveau de fréquentation du golf, et les heures de jeu pour chaque joueur. Parallèlement, les variables qualitatives telles que le jour de la semaine, le mois, la saison, les jours fériés, la présence de vent et les conditions météorologiques générales sont également considérées. De plus, le niveau de fréquentation est catégorisé en cinq niveaux, offrant ainsi une granularité plus fine dans l'analyse des tendances de fréquentation.
+
+La problématique centrale de cette étude est de déterminer comment les conditions météorologiques et les caractéristiques temporelles influencent la fréquentation du golf et le temps de jeu des joueurs. En examinant ces relations complexes, l'étude vise à apporter des éclairages précieux sur les préférences et les comportements des joueurs dans différents contextes environnementaux et temporels.
+
+
+La base de données rassemblent les variables ci-dessous : 
+
+## Variables quantitatives
+
+| Nom            | Description                      |
+|----------------|----------------------------------|
+| Temperature    | La température extérieur         |
+| Humidity       | La taux d'humidité ambiant       |
+| Crowdedness    | Le taux de fréquentation du golf |
+| PlayTimeHour_A | Nombre d'heure de jeux de A      |
+| PlayTimeHour_B | Nombre d'heure de jeux de B      |
+| PlayTimeHour_C | Nombre d'heure de jeux de C      |
+| PlayTimeHour_D | Nombre d'heure de jeux de D      |
+| PlayTimeHour_E | Nombre d'heure de jeux de E      |
+| PlayTimeHour_F | Nombre d'heure de jeux de F      |
+| PlayTimeHour_G | Nombre d'heure de jeux de G      |
+
+\newpage
+
+## Variables qualitatives
+
+
+| Nom             | Description                                                    |
+|-------------------|-----------------------------------------------------|
+| Weekday         | Le jour de la semaine (de lundi à vendredi)                    |
+| Month           | Le mois                                                        |
+| Season          | La saison                                                      |
+| Holiday         | 1 si le jour est férié, 0 sinon                                |
+| Windy           | 1 s'il y a du vent, 0 sinon                                    |
+| Outlook         | Aperçu (soleil, couvert, pluie, neige)                         |
+| Crowdedness_cat | Niveau de fréquentation en 5 niveau (très faible à très élevé) |
+| Play_A          | 1 si le joueur A à joué, 0 sinon                               |
+| Play_B          | 1 si le joueur B à joué, 0 sinon                               |
+| Play_C          | 1 si le joueur C à joué, 0 sinon                               |
+| Play_D          | 1 si le joueur D à joué, 0 sinon                               |
+| Play_E          | 1 si le joueur E à joué, 0 sinon                               |
+| Play_F          | 1 si le joueur F à joué, 0 sinon                               |
+| Play_G          | 1 si le joueur G à joué, 0 sinon                               |
+
+
+## Etude descriptives des quantitatives 
+
+```{r}
+stats <- golf_data %>%
+  summarise(
+    Temp_min = min(Temperature, na.rm = TRUE),
+    Temp_max = max(Temperature, na.rm = TRUE),
+    Temp_mean = mean(Temperature, na.rm = TRUE),
+    Temp_median = median(Temperature, na.rm = TRUE),
+    Temp_1st_Quartile = quantile(Temperature, 0.25, na.rm = TRUE),
+    Temp_3rd_Quartile = quantile(Temperature, 0.75, na.rm = TRUE),
+    Humidity_min = min(Humidity, na.rm = TRUE),
+    Humidity_max = max(Humidity, na.rm = TRUE),
+    Humidity_mean = mean(Humidity, na.rm = TRUE),
+    Humidity_median = median(Humidity, na.rm = TRUE),
+    Humidity_1st_Quartile = quantile(Humidity, 0.25, na.rm = TRUE),
+    Humidity_3rd_Quartile = quantile(Humidity, 0.75, na.rm = TRUE),
+    Crowdedness_min = min(Crowdedness, na.rm = TRUE),
+    Crowdedness_max = max(Crowdedness, na.rm = TRUE),
+    Crowdedness_mean = mean(Crowdedness, na.rm = TRUE),
+    Crowdedness_median = median(Crowdedness, na.rm = TRUE),
+    Crowdedness_1st_Quartile = quantile(Crowdedness, 0.25, na.rm = TRUE),
+    Crowdedness_3rd_Quartile = quantile(Crowdedness, 0.75, na.rm = TRUE)
+  )
+
+# Transformation des données en format long
+long_stats <- stats %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  separate(Variable, into = c("Variable", "Statistic"), sep = "_") %>%
+  pivot_wider(names_from = Variable, values_from = Value)
+
+long_stats <- as.data.frame(long_stats)
+rownames(long_stats) <-  long_stats[,1]
+long_stats <- long_stats[, -1]
+# Affichage du tableau
+long_stats %>% round(1) |> 
+  kable(booktabs = TRUE) %>%
+  kable_styling(latex_options = "HOLD_position",
+                font_size = 10)
+
+```
+
+Les statistiques descriptives des données quantitatives montrent que  la température fluctue entre des extrêmes de -2.0°C et 29.5°C et l’humidité varie largement de 18% à 99% indiquant une large amplitude thermique susceptible d'affecter le confort de jeu et potentiellement la fréquentation.
+Le terrain de golf présente un taux de fréquentation moyen de 0.6 sur une échelle de 0 à 1, suggérant une occupation modérée à élevée.
+En somme, le terrain de golf connaît des conditions climatiques variées et une fréquentation avec une tendance vers une
+occupation modérée à élevé.  Ces conditions pourraient avoir un impact significatif sur le temps de jeu et les préférences des joueurs.
+
+\newpage
+
+## Etudes descriptives des joueurs 
+```{r}
+# Liste des colonnes pour chaque joueur
+joueurs <- paste("PlayTimeHour_", LETTERS[1:7], sep = "")
+
+# Fonction pour calculer les statistiques descriptives pour un joueur
+stats_joueurs <- function(data, col) {
+    data <- data %>% filter(!!as.name(col) > 0)
+    stats <- data %>% summarise(
+        count = n(),
+        mean = mean(!!as.name(col), na.rm = TRUE),
+        std = sd(!!as.name(col), na.rm = TRUE),
+        min = min(!!as.name(col), na.rm = TRUE),
+        q25 = quantile(!!as.name(col), 0.25, na.rm = TRUE),
+        median = median(!!as.name(col), na.rm = TRUE),
+        q75 = quantile(!!as.name(col), 0.75, na.rm = TRUE),
+        max = max(!!as.name(col), na.rm = TRUE)
+    )
+    return(unlist(stats))
+}
+
+# Application de la fonction pour chaque joueur et création d'un tableau de données
+stats_list <- lapply(joueurs, function(col) stats_joueurs(golf_data, col))
+names(stats_list) <- joueurs
+stats_joueurs <- as.data.frame(stats_list) |> round(2) 
+rownames(stats_joueurs) <- c("Total", "Moyenne", "Ecart type", "Min", "Quartile1", "Mediane", "Quartile3", "Max")
+colnames(stats_joueurs) <- c("A", "B", "C", "D", "E", "F", "G")
+kable(stats_joueurs) |> kable_styling(full_width = TRUE, 
+                font_size = 10, 
+                position = "center", 
+                bootstrap_options = c("striped", "hover", "condensed"),
+                latex_options = "HOLD_position") 
+```
+
+Les moyennes des temps de jeu varient de 3.07 à 4.64 heures, ce qui montre que les joueurs C et E tendent à jouer plus longtemps par session que les autres.
+Les écarts-types sont tous inférieurs à 0.25, ce qui suggère une cohérence dans les habitudes de jeu de chaque joueur.
+Le joueur C semble être le plus engagé, avec des sessions de jeu plus longues et un total d'heures plus élevé, tandis que le joueur F a le total d'heures le plus faible, ce qui pourrait indiquer une fréquentation moins régulière. 
+Les quartiles et les médianes suggèrent que la majorité des sessions de jeu pour chaque joueur se concentrent autour d'une durée médiane spécifique, avec peu de variations extrêmes, comme indiqué par les valeurs minimales et maximales proches des médianes.
+Ces statistiques démontrent les tendances de chaque joueur concernant la durée de leurs sessions de jeu et peuvent être indicatives de leurs préférences ou contraintes personnelles.
+
+\newpage
+
+
+# ACP
+
+Après avoir établi le cadre de notre étude sur les données de golf et identifié la question centrale de l'influence des conditions météo et temporelles sur le jeu, nous nous apprêtons à approfondir notre analyse grâce à l'Analyse en Composantes Principales (ACP). Cette méthode de réduction de la dimensionnalité va nous permettre de clarifier la structure de nos données quantitatives, en extrayant les facteurs les plus influents sur la fréquentation et le temps de jeu.
+
+## Matrice des corrélation
+
+Présentons dans un premier temps la matrice des corrélations :
+
+```{r}
+M <- cor(golf_data[ ,quanti])
+corrplot(M, type = "upper", diag=F, method = "square")
+```
+
+```{r}
+ACP <- PCA(golf_data, quali.sup = quali, graph=F)
+```
+
+## Valeurs propres
+
+```{r}
+ACP$eig %>% round() %>% kable() %>% kable_styling(full_width = TRUE,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed") )
+```
+
+\newpage
+
+## Inertie aux axes
+
+
+```{r}
+fviz_screeplot(ACP, addlabels=T, ncp=5)
+```
+
+On conserve les 4 premières axes.
+
+\newpage
+
+## Etude de variables - Axe 1 et 2
+
+```{r}
+fviz_pca_var(ACP, col.var = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel=T)
+```
+
+Le premier graphique mets en relief la corrélation positive entre le temps de jeu des joueurs A et C et la variable "crowdedness" qui mets en avant la densité de joueur déjà présents ce jour là. A et C ont donc tendance à jouer au golf les jours ou pas mal de monde se trouve déjà présents sur place. A, C et "Crowdedness" sont placés positivement sur l'axe 1 contrairement à la variable "humidity", ce qui nous laisse croire que l'humidité est un facteur météorologique qui dérange A, C et d'autres joueurs les contraignant donc à reporter leur partie de golf à plus tard les jours humides. Le joueur G est également placé négativement sur l'axe 1 et positivement sur l'axe 2, nous laissant croire que le joueur G à un temps de jeu plus long les jours humides et chauds, et n'est pas très pratiquant de golf les jours où il y a beaucoup de monde sur place. G à donc des exigences opposés à A et C concernant ses paramètres de jeu. Cela peut se traduire de la sorte : le fait que G n'aime pas jouer au golf lorsqu'il y à beaucoup de monde le contraint à jouer les jours humides et chauds. Cela dit, il est tout de même important de préciser que les vecteurs A et C se superposent et sont bien représentés sur ce graphique, nous indiquant la forte corrélation entre le temps de jeu des ces deux individus. Peut-être jouent-t-ils ensemble ?
+
+\newpage
+
+## Etude de variables - Axe 1 et 3
+
+```{r}
+fviz_pca_var(ACP, col.var = "cos2", 
+             axes = c(1,3),
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel=T)
+```
+
+Ici le temps de jeu de B est bien représente, et on voit, de part son placement positif sur la dimension 1 qu'il aime jouer les jours où il y a beaucoup de monde. On remarque aussi graphiquement la corrélation positive entre le temps de jeu de B et celui de D, peut-être aiment-t-ils jouer ensemble ? On retrouve également l'opposition de la variables crowdedness et humidity, indiquant que les joueurs en générale n'aime pas vraiment jouer au golf les jours humides. Le temps de jeu de B et la variable crowdedness sont ici placés positivement sur l'axe 1, indiquant peut-être que le temps de jeu de B est plus long les jours où il y a beaucoup de monde.
+
+\newpage
+
+## Etude de variables - Axe 2 et 4
+
+```{r}
+fviz_pca_var(ACP, col.var = "cos2", 
+             axes = c(2, 4),
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel=T)
+```
+
+Lorsqu'on mets en avant l'axe 2 avec l'axe 4, on remarque assez aisément la corrélation négative entre le temps de jeu de F et la température; la conclusion est alors assez simple, plus il fait chaud, moins F à tendance à jouer longtemps. Plus F joue longtemps, plus D joue longtemps, peut être aiment-t-ils jouer ensemble, ou ont-t-ils des exigences météorologiques similaires concernant leurs parties de golf.
+
+\newpage
+
+## Etude de variables - Axe 1 et 5
+
+```{r}
+fviz_pca_var(ACP, col.var = "cos2", 
+             axes = c(1, 5),
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel=T)
+```
+
+La contribution et la corrélation de l'individu E à l'axe 5 sont assez prononcés. Voilà pourquoi il serait intéressant de placer cette axe sur un graphique pour étudier le comportement de ce joueur. Ici on remarque que le temps de jeu de E est placé positivement sur l'axe 1, et on rappelle que l'axe 1 est fortement corrélé aux variables "temps de jeu de A" "temps de jeu de B", "crowdedness" et "humidity". Il est alors assez simple de remarquer que E n'aime pas jouer les jours humides, son temps de jeu sera plus long les jours où déjà beaucoup de monde sont présents (parce que peu de personne n'aime l'humidité pour jouer) et que son temps de jeu est corrélé positivement au temps de jeu de A et C.
+
+\newpage
+
+## Etude des corrélation
+
+Ici le tableau ci-dessous représente la corrélation entre chaque variable quantitative et chaque dimension.
+
+
+```{r}
+correlations <- ACP$var$cor %>% round(3)
+kable(correlations) %>% 
+  kable_styling(position = "center", 
+                full_width=F,
+                bootstrap_options = c("striped", "hover"), 
+                latex_options = "HOLD_position")
+```
+
+Au vu du tableau des corrélations, on observe que : 
+
+- L'axe 1 représente bien les variances des variables "humidity", "crowdedness" et du temps de jeu des individus A, C et G 
+- L'axe 2 explique plus la variance des variables "temperature", "windy" et du temps de jeu de D 
+- "Weekday" et le temps de jeu de B sont des attributs déterminants de l'axe 3. 
+- L'axe 4 et 5 représenteront quant à eux beaucoup plus les variances de temps de jeu des joueurs F , G et E.
+
+Affichons les contributions des variables aux dimensions à travers des graphiques afin d'avoir une meilleure visibilité des variables qui contribuent le plus aux différentes axes.
+
+```{r}
+g1 <- fviz_contrib(ACP, choice = "var", axes = 1) + 
+             ggtitle("Dim 1")
+g2 <- fviz_contrib(ACP, choice = "var", axes = 2) + 
+             ggtitle("Dim 2")
+g3 <-fviz_contrib(ACP, choice = "var", axes = 3) + 
+             ggtitle("Dim 3")
+g4 <-fviz_contrib(ACP, choice = "var", axes = 4) + 
+             ggtitle("Dim 4")
+g5 <-fviz_contrib(ACP, choice = "var", axes = 5) + 
+             ggtitle("Dim 5")
+
+# Arrangement des graphiques
+grid.arrange(g1, g2, g3, ncol = 3)
+grid.arrange(g4, g5, ncol = 3)
+```
+
+Pour répondre partiellement à la problématique, il est évident que les conditions météorologiques influencent le temps de jeu des différents joueurs présents dans notre base de données.
+L'ACP nous permets de voir que les joueurs A et C favorisent les jours non humides et ont tendance donc à jouer les jours où il y à pas mal de monde sur place .
+Leur temps de jeu sont également corrélés entre eux positivement ce qui nous laisserais croire que plus A joue plus C joue et inversement.
+Peut-être jouent-t-ils ensembles ?
+Quoiqu'il en soit, leurs conditions de jeu sont similaires.
+Le temps de jeu du joueur B n'est que peu influencé par les conditions météorologiques, il à cependant un temps de jeu assez long les jours où beaucoup de joueurs sont déjà sur place.
+Peut-être sont-ils les jours de la semaine qui influencent son temps de jeu ?
+Les fortes températures et l'humidité constituent des éléments météorologiques qui poussent le joueur D à faire autre chose que jouer une partie de golf.
+Il est important de noter que le temps de jeu de B et D sont corrélés positivement, indiquant peut-être des préférences météorologiques similaires où des disponibilités dans le temps assez semblables.
+
+Le joueur E, contribuant majoritaire de l'axe 5, à lui des goûts assez similaire en terme de météo que A et C.
+
+F préféré jouer les jours froids, G quant à lui préfére les jours chauds et humides.
+Il est d'ailleurs le seul joueur de notre base de données à avoir ces préférences.
+Mais ceci s'explique assez aisément, G n'a pas l'air d’apprécier les terrains de golf très fréquentés pour ses parties. Il s'y rend donc les jours humides et chauds et est sur de trouver peu de monde, étant donnée que la variable crowdedness et humidity sont corrélés négativement.
+Tout les deux ont des temps de jeu plus longs lorsqu'il y a moins de monde sur les terrains de golf.
+
+\newpage
+
+### Nuages de indivudus
+
+
+```{r, fig.width=6, fig.height=3}
+fviz_pca_ind(ACP,
+             col.ind = golf_data$Season, palette = c("#2E9FDF", "#FC4E07", "#EFC000", "#4E9A06"),
+             addEllipses = TRUE,
+             legend.title = "Saison",
+             label = "none") 
+
+
+```
+
+### Nuages des variables
+
+
+```{r, fig.width=6, fig.height=3}
+fviz_pca_var(ACP, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), labelsize = 3, repel = TRUE)
+```
+
+Sans trop de surprise, on remarque que les jours d’été sont placés pour la plupart négativement sur l’axe 1, et rejoins donc les variables température et humidité. À l’inverse, les jours de printemps et d'automne viennent en partie se placer positivement sur la dimension 1 en suivant la direction des temps de jeu de A et C, ainsi que la variable Crowdedness. L’hiver, placé négativement sur l’axe 2, vient suivre la trajectoire des temps de jeu de D et F. Le printemps et l'automne sont les saisons favorites de la plupart des joueurs pour jouer au golf. A et C vont consacrer leurs temps de jeu à ces saisons-ci. G, du fait qu’il n’aime potentiellement pas les terrains de golf bondés, ou du fait de ces préférences peu communes, va favoriser l’été pour sa pratique du golf. D et F quant à eux vont opter pour l’hiver.
+
+\newpage
+
+Nous allons maintenant poursuivre notre investigation en examinant les associations entre les variables qualitatives et notre variable d'intérêt : la fréquentation du terrain de golf. Pour ce faire, nous utilisons l'Analyse Factorielle des Correspondances (AFC), qui est particulièrement adaptée à l'étude des relations entre deux variables catégorielles.
+
+Trois AFC distinctes vont être menées afin de creuser plus profondément les liens entre la fréquentation et, respectivement, le mois de l'année, le jour de la semaine, et les conditions météorologiques générales (Outlook). Chacune de ces analyses vise à déchiffrer les patterns de fréquentation en fonction de ces catégories temporelles et environnementales, permettant de révéler des tendances potentielles et des préférences comportementales spécifiques.
+
+# AFC - Fréquentation et mois
+
+Avant de commencer l'étude et pour nous aider dans nos futurs interprétations, il semble pertinent de regarder la température moyenne de chaque mois. En effet, les température sont basés sur le climat d'une région japonaises et ne sont peut-etre pas sensiblement similaires à nos températures européenne lors d'une période donnée. 
+
+```{r}
+average_temperature_per_month <- golf_data %>%
+  group_by(Month) %>%
+  summarise(Average_Temperature = mean(Temperature, na.rm = TRUE))
+
+ggplot(average_temperature_per_month, aes(x = Month, y = Average_Temperature)) +
+  geom_bar(stat = "identity", fill = "black") +
+  theme_minimal() +
+  labs(title = "Température Moyenne par Mois",
+       x = "Mois",
+       y = "Température Moyenne (°C)")
+```
+
+Les températures moyennes de chaque mois semblent être similaires à ce qu'on a l'habitude d'observer en France, avec des températures très élevées en été, très faibles en hiver, et plus modérées au printemps et en automne.
+
+
+\newpage
+
+## Tableau de contingence
+
+```{r}
+#Tableau de contingence 
+tab2 |> as.matrix() |> addmargins() |> rename_total() |> kable() %>%
+    kable_styling(
+      full_width = TRUE,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed"),
+      latex_options = "HOLD_position"
+    ) %>%
+    column_spec(c(1, 7), bold = TRUE) |>  row_spec(c(13), bold = TRUE)
+```
+
+## Test du Chi 2
+
+```{r}
+# Test du chi2
+testchi2_2<-chisq.test(tab2)
+tab2_chi2<-c(testchi2_2$statistic,testchi2_2$parameter,testchi2_2$p.value) |> round(2)
+names(tab2_chi2)[3]<-"p.value"
+tab2_chi2<-as.matrix(tab2_chi2)
+tab2_chi2 %>% kable() %>% 
+  kable_styling( 
+    full_width = F,
+    font_size = 10,
+    position = "center",
+    bootstrap_options = c("striped", "hover", "condensed"),
+    latex_options = "HOLD_position"
+  )
+```
+
+## Contribution du Chi 2
+
+```{r}
+#Modalités contribuant le plus au Chi1_2
+tab2contchi2 <- testchi2_2$residuals^2 %>% proportions() %>% addmargins() %>% round(4) * 100
+colnames(tab2contchi2)[ncol(tab2contchi2)]<-"Total"
+rownames(tab2contchi2)[nrow(tab2contchi2)]<-"Total"
+tab2contchi2 %>% kable() %>%
+   kable_styling( 
+    full_width = TRUE ,
+    position = "center",
+     bootstrap_options = c("striped", "hover"),
+    latex_options = "HOLD_position"
+    ) %>%
+  column_spec(1,bold=TRUE) %>%
+  column_spec(2,color=ifelse(tab2contchi2[,1]<5,"green",
+                             ifelse(tab2contchi2[,1]<10,"orange","red"))) %>%
+  column_spec(3,color=ifelse(tab2contchi2[,2]<5,"green",
+                             ifelse(tab2contchi2[,2]<10,"orange","red"))) %>%
+  column_spec(4,color=ifelse(tab2contchi2[,3]<5,"green",
+                             ifelse(tab2contchi2[,3]<10,"orange","red"))) %>%
+  column_spec(5,color=ifelse(tab2contchi2[,4]<5,"green",
+                             ifelse(tab2contchi2[,4]<10,"orange","red"))) %>%
+  column_spec(6,color=ifelse(tab2contchi2[,5]<5,"green",
+                             ifelse(tab2contchi2[,5]<10,"orange","red"))) %>%
+  column_spec(7,color=ifelse(tab2contchi2[,6]<5,"green",
+                             ifelse(tab2contchi2[,6]<10,"orange","red")))
+```
+
+Les résultats du test du Chi-2 pour l'association entre la fréquentation et les mois de l'année révèlent une valeur de Chi-2 de 271.6 avec 44 degrés de liberté et une p-value de 0.0. Cette p-value très faible suggère que l'association entre les mois de l'année et les niveaux de fréquentation est statistiquement significative, ce qui signifie que la fréquentation varie selon le mois.
+
+En examinant les contributions au Chi-2, qui mesurent l'impact de chaque combinaison sur la statistique globale du Chi-2, nous pouvons voir que certains mois et certains niveaux de fréquentation contribuent de manière disproportionnée à la valeur globale du Chi-2. Par exemple, les mois d'août et de janvier présentent des contributions élevées pour les catégories de fréquentation 'Très faible' et 'Très élevé'. Cela peut indiquer que ces mois connaissent des extrêmes en termes de fréquentation, peut-être en raison des conditions saisonnières ou des vacances.
+
+D'autres mois, comme juin et mars, ont des contributions très faibles pour certains niveaux de fréquentation, ce qui pourrait signifier que ces mois n'ont pas une influence aussi forte sur la fréquentation ou que la fréquentation est plus uniformément répartie.
+
+\newpage
+
+```{r}
+# Réaliser l'Analyse Factorielle des Correspondances
+afc2 <- CA(tab2, graph = FALSE)
+```
+
+## Inertie aux axes
+
+
+
+### Diagramme
+
+
+
+```{r}
+fviz_eig(afc2, addlabels = TRUE) + ggtitle("Diagrammes des inerties") + 
+  ylab("Pourcentage de variances")
+```
+
+
+### Table
+
+Nous conservons les deux premiers axes qui rassemble 94.5 % de l'inertie totale. 
+
+
+```{r}
+TabIne2<-round(t(afc2$eig),4)
+rownames(TabIne2)<-c("Inerties","Inerties relatives %","Inerties relatives cumulees") 
+colnames(TabIne2)<-1:nrow(afc2$eig)
+TabIne2 %>% kable() %>%
+   kable_styling( 
+    full_width = FALSE,
+    position = "center",
+    bootstrap_options = c("striped", "hover"),
+        latex_options = "HOLD_position"
+)
+```
+
+\newpage
+
+## Profil Colonne - Fréquentation
+
+
+### Tableau de proportion
+
+
+
+```{r}
+tab2.1 <-tab2 %>% as.matrix() %>% addmargins(margin=2) %>% proportions(margin=2) %>% addmargins(margin=1) |> rename_total()
+tab2.1 %>% pourcent() |> round(1)%>% 
+   kable(escape=F) %>%
+   kable_styling( 
+    full_width = TRUE,
+    position = "center",
+     bootstrap_options = c("striped", "hover"),
+    latex_options = "HOLD_position"
+    ) %>%
+    column_spec(1, bold = TRUE) 
+```
+
+
+### Diagramme
+
+
+
+```{r}
+ggplot(data=tab2_t,aes(x=Frequentation ,y= Effectifs, fill= Mois), full_width = TRUE) + 
+  geom_bar(stat="identity",position="fill")
+```
+
+\newpage
+
+
+En examinant les données :
+
+- Août présente une proportion élevée de jours avec une fréquentation "Très faible" (19,5%) et les proportions diminuent à mesure que l'on monte dans les niveaux de fréquentation, avec le niveau "Très élevé" le plus bas (4,5%). Cela pourrait indiquer que le mois d'août est moins populaire pour le golf, peut-être en raison de la chaleur ou des vacances d'été.
+
+- Janvier et juillet montrent également une proportion significative de jours avec une fréquentation "Très faible". Pour janvier, cela peut être dû au froid ou à la neige, tandis que pour juillet, d'autres facteurs saisonniers pourraient jouer.
+
+- Mai et octobre présentent une distribution plus uniforme des niveaux de fréquentation, avec une légère tendance vers des niveaux de fréquentation "Moyenne" à "Très élevée", ce qui peut suggérer des conditions plus favorables ou des événements qui attirent plus de joueurs.
+
+- Décembre, février et mars montrent un équilibre relativement uniforme sur les catégories de fréquentation, bien que décembre et février aient un peu plus de jours avec une fréquentation "Faible" et "Moyenne", ce qui peut refléter l'impact des conditions hivernales sur le jeu.
+
+
+### Contribution aux axes
+
+
+```{r}
+fig5 <- fviz_contrib(afc2, choice = "col", labelsize = 3) + 
+  ggtitle("Contributions axe 1", subtitle = "Fréquentation") +
+  geom_text(aes(label = round(afc2$col$contrib[, "Dim 1"], 2)), vjust = -1, color = "Black")+ theme(plot.title = element_text(face = "bold", size = 14), 
+        plot.subtitle = element_text(face = "italic", size = 12)) + ylim(0,70)
+
+fig6 <- fviz_contrib(afc2, choice = "col", labelsize = 3, axes = 2) +
+  ggtitle("Contributions axe 2", subtitle = "Fréquentation") +
+  geom_text(aes(label = round(afc2$col$contrib[, "Dim 2"], 2)), vjust = -1, color = "Black")+ theme(plot.title = element_text(face = "bold", size = 14), 
+        plot.subtitle = element_text(face = "italic", size = 12)) + ylim(0,60)
+
+ggarrange(fig5, fig6, ncol = 2)
+```
+
+
+
+```{r}
+# Extraction des résultats pour les modalités des colonnes
+col_res2 <- get_ca_col(afc2)
+
+# Création d'un tableau avec les informations demandées
+tableau3 <- round(data.frame(
+  Qualite_Axe1 = col_res2$cos2[, 1],
+  Qualite_Axe2 = col_res2$cos2[, 2]
+), 3)
+t(tableau3) %>% 
+  kable()%>% 
+  kable_styling(
+      full_width = TRUE,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed"),
+          latex_options = "HOLD_position"
+    ) %>%
+    column_spec(1, bold = TRUE) 
+```
+
+\newpage
+
+Ces contributions montrent que les niveaux extrêmes de fréquentation ("Très faible" et "Très élevé") sont les plus distinctifs (avec des qualités de présentations très élevés) et influencent le plus les deux premiers axes de l'AFC. Cela pourrait indiquer que les facteurs qui déterminent les extrêmes de la fréquentation sont les plus importants à comprendre dans cette analyse. Les axes peuvent être
+interprétés comme distinguant principalement les jours de faible fréquentation des jours de forte fréquentation.
+
+## Profil ligne - Mois
+
+### Tableau de proportion
+
+```{r}
+tab2.2 <-tab2 %>% as.matrix() %>% addmargins(margin=1) %>% proportions(margin=1) %>% addmargins(margin=2) |> rename_total()
+tab2.2 %>% pourcent() |> round(1) |> 
+  kable(escape=F) %>%
+   kable_styling( 
+    full_width = TRUE,
+    position = "center",
+     bootstrap_options = c("striped", "hover"),
+              latex_options = "HOLD_position"
+    ) %>%
+    column_spec(1, bold = TRUE) 
+```
+
+### Diagramme
+
+```{r}
+ggplot(tab2_t,aes(x=Mois ,y=Effectifs,fill=Frequentation))+geom_bar(stat="identity",position = "fill") +ylab("Part")
+```
+
+\newpage
+
+Les mois de janvier, juillet, août et décembre présentent une part importante de jours avec une fréquentation "Très faible" (en rouge), ce qui pourrait refléter des conditions météorologiques défavorables (températures extrêmes) ou des périodes de vacances où les joueurs sont moins disponibles.
+
+Les mois de mai, avril, octobre et septembre sont les mois ayant la part de jours à fréquentation élevé à très élevé la plus importante. ce sont les mois où les tempratures sont les plus tempérées. Les joueurs de golf evitent donc les températures extrêmes. 
+
+### Contribution aux axes
+
+```{r}
+# Etude des contributions de l'axe 1 
+
+fig7 <- fviz_contrib(afc2, choice = "row", labelsize = 3) + 
+  ggtitle("Contributions axe 1", subtitle = "Mois") +
+  geom_text(aes(label = round(afc2$row$contrib[, "Dim 1"], 2)), vjust = -1, color = "Black") + 
+  theme(plot.title = element_text(face = "bold", size = 14), 
+        plot.subtitle = element_text(face = "italic", size = 12),
+        axis.title = element_text(size = 12)) + ylim(0,25)
+
+fig8 <- fviz_contrib(afc2, choice = "row", labelsize = 3, axes = 2) + 
+  ggtitle("Contributions axe 2", subtitle = "Mois") +
+  geom_text(aes(label = round(afc2$row$contrib[, "Dim 2"], 2)), vjust = -1, color = "Black") + 
+  theme(plot.title = element_text(face = "bold", size = 14), 
+        plot.subtitle = element_text(face = "italic", size = 12),
+        axis.title = element_text(size = 12)) + ylim(0,25)
+
+ggarrange(fig7, fig8, ncol = 2)
+```
+
+```{r}
+# Extraction des résultats pour les modalités des colonnes
+row_res2 <- get_ca_row(afc2)
+
+# Création d'un tableau avec les informations demandées
+tableau4 <- round(data.frame(
+  Qualite_Axe1 = row_res2$cos2[, 1],
+  Qualite_Axe2 = row_res2$cos2[, 2]
+), 3)
+t(tableau4) %>% 
+  kable()%>% 
+  kable_styling(
+      full_width = TRUE,
+      font_size = 5,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed"),
+                    latex_options = "HOLD_position"
+    ) %>%
+    column_spec(1, bold = TRUE)
+```
+
+Janvier et août sont les mois les plus contributifs àl'axe 1, avec respectivement environ 20.33% et 18.78% de contribution, ce qui peut suggérer que ces mois ont des caractéristiques distinctes qui affectent fortement la fréquentation du golf. En effet ce sont les mois où les conditions météorologiques sont les plus extrêmes. Cela indique une saisonnalité dans les habitudes de fréquentation qui peut être importante pour la planification stratégique des activités de golf.
+
+\newpage
+
+## Conclusion AFC 1
+
+```{r}
+fviz_ca_biplot(afc2, choice ="both", label = "all")
+```
+
+L’**axe 1** oppose très distinctement les niveau de fréquentation de très élevé à très faible avec leurs mois associés. On remarque encore la forte corrélation entre les niveaux de fréquentation extrêmes et les mois a conditions météorologiques extrêmes. 
+
+L’**axe 2** semble mettre en opposition (dans une moindres mesure) des dimensions temporelles avec les mois où les températures sont les plus faibles dans la partie positives et les mois où les températures sont les plus élevés dans la partie négatives. 
+
+\newpage
+
+# AFC - Fréquentation et Jour de la semaine
+
+## Tableau de contingence
+
+```{r}
+#Tableau de contingence 
+tab1 |> as.matrix() |> addmargins() |> rename_total() |> kable() %>%
+    kable_styling(
+      full_width = TRUE,
+      font_size = 6,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed"),
+                          latex_options = "HOLD_position"
+    ) %>%
+    column_spec(c(1, 7), bold = TRUE) |>  row_spec(c(8), bold = TRUE)
+```
+
+## Conclusion AFC 2
+
+```{r}
+afc1 <- CA(tab1, graph = FALSE)
+```
+
+```{r, fig.width=6, fig.height=4}
+fviz_ca_biplot(afc1, choice ="both", label = "all")
+```
+
+**Axe 1** (Dim1 - 92.7%) :
+
+ - Cet axe explique une très grande partie de la variance (92.7%) et semble opposer le samedi, associé à une fréquentation "Très élevée", à tous les autres jours de la semaine. Cela suggère que le samedi est un jour particulièrement populaire pour le golf, ce qui pourrait être dû au fait que c'est le week-end et que les gens ont plus de temps libre pour des activités de loisirs.
+ - Le lundi est situé à l'opposé du samedi sur cet axe et est associé à une fréquentation "Très faible", ce qui pourrait refléter une tendance pour les gens à moins fréquenter le golf en début de semaine.
+
+**Axe 2** (Dim2 - 5.3%) :
+ - L'axe 2, bien que capturant une plus petite portion de la variance, distingue le vendredi, associé à une fréquentation "Élevée", des autres jours de la semaine. Cela peut indiquer que le vendredi est également un jour de fréquentation relativement forte, peut-être en raison des personnes commençant leur week-end plus tôt ou participant à des événements de golf de fin de semaine.
+- Les autres jours de lasemaine, comme le jeudi et le mercredi, semblent avoir une fréquentation "Moyenne" à "Faible", ce qui peut indiquer une activité régulière mais pas aussi intense que le week-end.
+
+L'analyse met en lumière une distinction claire entre les jours de la semaine en termes de fréquentation du golf. Le samedi se démarque comme étant le jour avec la plus forte fréquentation, ce qui est cohérent avec le comportement habituel des loisirs pendant le week-end.
+
+\newpage
+# AFC - Fréquentation et Météo
+
+## Tableau de contingence
+
+```{r}
+#Tableau de contingence 
+tab3 |> as.matrix() |> addmargins() |> rename_total() |> kable() %>%
+    kable_styling(
+      full_width = TRUE,
+      font_size = 8,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed"),
+                                latex_options = "HOLD_position"
+    ) %>% column_spec(c(1, 7), bold = TRUE) |>  row_spec(c(5), bold = TRUE)
+
+```
+
+## Conclusion AFC 3
+
+```{r}
+afc3 <- CA(tab3, graph = FALSE)
+```
+
+```{r, fig.width=7, fig.height=4}
+fviz_ca_biplot(afc3, choice ="both", label = "all")
+```
+
+**Axe 1** (Dim1 - 89.9%) :
+- L'axe 1 capture la grande majorité de la variance (89.9%) et met en opposition les conditions de "neige" avec les conditions de "soleil". La neige est associée à une fréquentation "Très faible", ce qui est cohérent avec l'idée que les conditions hivernales et enneigées dissuadent la pratique du golf. À l'opposé, le soleil est associé à des niveaux de fréquentation "Élevée" et "Très élevée", ce qui suggère que les jours ensoleillés favorisent une plus grande affluence sur les terrains de golf.
+- Les conditions de "pluie" et "couvert" sont proches de l'origine sur l'axe 1, ce qui pourrait indiquer que leur effet sur la fréquentation est moins marqué par rapport à la neige ou au soleil. Néanmoins, la "pluie" est légèrement plus proche du niveau de fréquentation "Très faible", ce qui laisse entendre que la pluie peut avoir un effet négatif sur le nombre de joueurs.
+
+**Axe 2** (Dim2 - 10%) 
+- L'axe 2, qui représente une plus petite portion de la variance, ne montre pas de séparation nette entre les différentes conditions météorologiques et les niveaux de fréquentation. Cependant, on peut observer que "neige" et "soleil" s’opposent à "couvert" et "pluie" ce qui peut indiquer que l’axe 2 peut séparer les conditions extrêmes et les conditions plus modérés. 
+
+Cette AFC confirme des intuitions logiques concernant l'impact de la météo sur la fréquentation des terrains de golf. Les jours de neige sont clairement associés à une fréquentation réduite, tandis que les jours ensoleillés semblent être les plus propices au golf. Les conditions de "pluie" et "couvert" semblent avoir un impact intermédiaire, suggérant que les joueurs peuvent être moins enclins à jouer par temps humide ou gris, mais pas dans la même mesure que par temps de neige.
+
+\newpage
+
+# ACM
+
+Après avoir exploré les dynamiques entre les jours de la semaine, les conditions météorologiques, les mois et les niveaux de fréquentation à travers des Analyses Factorielles des Correspondances (AFC), nous nous tournons maintenant vers une approche plus englobante : l'Analyse des Correspondances Multiples (ACM). L'ACM est particulièrement pertinente lorsque nous traitons des ensembles de données avec plusieurs variables qualitatives, car elle nous permet de visualiser et d'analyser les modèles de relations entre plus de deux catégories.
+
+L'objectif est de tirer des conclusions plus fines sur les habitudes des joueurs et sur les facteurs qui influencent leur présence sur le terrain de golf. 
+
+```{r}
+acm <- golf_data %>% 
+  mutate(across(c(Weekday,Holiday,Windy,starts_with("Play_")), as.character)) %>% 
+  MCA(quanti.sup = quanti,graph=F, quali.sup=c(2,4))
+```
+
+## Inertie des axes
+
+```{r}
+acm$eig %>% kable() %>% 
+  kable_styling(position = "center", 
+                full_width=F,
+                font_size = 15,
+  bootstrap_options = c("striped", "hover"),
+                  latex_options = "HOLD_position"
+  )
+```
+
+\newpage
+
+## Diagramme des inerties 
+
+```{r, fig.width=7, fig.height=3}
+fviz_screeplot(acm, addlabels=T, ncp=10, ylab= "Pourcentage de variances expliquées")
+```
+
+Ce premier graphique représente les inerties pour chaque axes factoriels.
+
+On peut alors sélectionner ici les 3/4 premiers axes, qui explique environ 47% de l'inertie.
+
+## Nuages des variables - Dim 1, 2
+
+```{r, fig.width=7, fig.height=4}
+fviz_mca_var(acm, 
+             col.var = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE, labelsize=3)
+```
+
+L'axe 1 mets en opposition le niveau de fréquentation de terrain de golf.
+La modalités élevé se retrouve positive sur cet axe alors que la modalité très faible se retrouve à l'opposé placé négativement.
+l'axe 1 mets également en opposition les décisions de jouer des joueurs A et C.
+L'axe 1 viens aussi mettre en avant l'opposition des jours de pluie avec les jours ensoleillés.
+L'axe 2 viens quant à elle mettre en avant les décisions de jouer des golfeurs F, D, B, et une certaine opposition des saison hiver et été.
+Ces variables énoncées dans cette analyse ci-dessus sont les variables les mieux représentées sur les axes 1 et 2.
+
+\newpage
+
+## Etude des contribution
+
+```{r}
+g1 <- fviz_contrib(acm, choice = "var", axes=1, top=15)
+g2 <- fviz_contrib(acm, choice = "var", axes=2, top=15)
+ggarrange(g1, g2)
+```
+
+On retrouve les résultats de notre analyse plus haut.
+Les variables qui contribuent le plus à l'axe 1 sont les variables qui représentent la decision de jouer des golfeurs A et C, suivi de la variable "Crowdedness" avec les modalités très élevé et très faible.
+
+Les variables qui ont le plus contribuées à la construction de l'axe 2 sont les décisions de jouer des golfeurs D, F et B.
+
+On pourra en parallèle faire une étude des individus pour confirmer notre étude. On affichera les 150 dates les plus représentatives pour avoir un graphique pertinent et suffisamment visible.
+
+\newpage
+
+## Nuage des contributions des individus 
+
+```{r}
+fviz_mca_ind(acm,
+             col.ind = "cos2",
+             gradient.cols =  c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE, 
+             select.ind = list(cos2 =150), 
+             alpha.ind = 0.5,
+             labelsize=2,
+             title = "Nuage des Contributions des individus"
+             ) +
+  theme_minimal() + # Thème minimaliste
+  labs(colour = "Contribution (contrib)") 
+```
+
+
+La répartition des individus semblent suivre les modalités.
+On peut étudier les individus "extrêmes" pour se donner un ordre d'idée de ce que représentent les axes.
+
+\newpage
+
+```{r}
+mini_data <- c("2023-05-27","2021-01-29", "2023-03-18", "2022-08-16") 
+minitab <- golf_data[rownames(golf_data) %in% mini_data, ]
+t(minitab) |> kable() |> kable_styling(
+      full_width = TRUE,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed"),
+                        latex_options = "HOLD_position"
+    ) 
+```
+
+Ce tableau, prenant en compte les valeurs des dates placées à l'extrême des axes 1 et 2, vient confirmer nos interprétations précèdentes : l'axe 1 traduit le caractère bondé des terrains de golf ainsi que les décisions de jouer des golfeurs A et C.
+
+L'axe 2, mets en opposition les saisons été et hiver et les décisions de jouer des joueurs B, D et F.
+
+Conclusion pour les deux premières axes : en se basant sur les coordonnées et les qualités de représentation des variables on peut dire que : 
+- L'axe 1 traduit la densité de joueur présents sur les terrains de golf, si une date est placée positivement sur l'axe 1, c'est qu'à cette date, les terrains de golf étaient bondés et probablement ensoleillés.
+
+Il y a également de forte chance que ces terrains aient accueillis les joueurs A et C ce jour là.
+A l'inverse, une date placée négativement sur l'axe 1 reflétera un jour ou les terrains de golf ne sont pas très prisés, un potentiel jour de pluie où les joueurs A et C ont préférés faire autre chose que de jouer au golf.
+
+L'axe 2 traduit les décisions de jouer des golfeurs D, F et B, ainsi qu'une certaine opposition des saisons été/hiver.
+Un date placé positivement sur cet axe reflète un jour d'hiver, ayant probablement accueilli les joueurs D, F et B.
+A l'inverse, les dates qui y sont placés négativement seront plus des jours d'été, où ces derniers auront préféré faire autre chose que jouer une partie de golf.
+
+\newpage
+
+## Nuages des variables - Dim 3, 4
+
+```{r, fig.width=7, fig.height=4}
+fviz_mca_var(acm, axes=c(3,4),
+             col.var = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE, labelsize=3)
+```
+
+### Etudes des contributions
+
+```{r, fig.width=7, fig.height=3}
+g3 <- fviz_contrib(acm, choice = "var", axes=3, top=15)
+g4 <- fviz_contrib(acm, choice = "var", axes=4, top=15)
+ggarrange(g3, g4)
+```
+
+En se basant sur la qualité de représentation des variables ainsi que leurs coordonnées on peut dire que : l'axe 3 traduit les décisions de jouer des golfeurs F et E, ainsi que les jours froid (winter) et enneigés.
+Ces golfeurs préfèrent donc jouer dans ces conditions météorologiques, et chaque dates placées positivement sur cette axe est synonyme d'hiver, de froid et de neige (basse température en général).
+L'axe 4 reflète la décision de jouer du golfeur G, une très faible densité de joueur, des jours d'été et de pluie.
+Comme vu précédemment dans l'ACP, le joueur G n'aime pas vraiment jouer au golf les jours ou il y a beaucoup de monde.
+Cela l’amène à jouer les jours de pluie ou encore les jours à fortes températures ("Summer").
+Les jours placés positivement sur cette axe traduisent des journées où les terrains de golfs ne sont pas très prisés, des jours d'été et de pluie.
+Pour fortifier l'étude, on vas pouvoir étudier les graphique des eta2 afin d'appuyer nos propos.
+
+\newpage
+
+```{r, echo=FALSE}
+eta <- (get_mca_var(acm, element="mca.cor")$coord)[,1:5] |>  as.data.frame() 
+eta <-rbind(eta, acm$quali.sup$eta2[,1:5], abs(acm$quanti.sup$coord[,1:5]))
+names(eta) <- c("dim1", "dim2", "dim3", "dim4", "dim5")
+```
+
+```{r}
+round(eta[order(eta[,1], decreasing = TRUE),1:5], 2) |> kable() |> 
+  kable_styling(
+      full_width = TRUE,
+      font_size = 8,
+      position = "center",
+      bootstrap_options = c("striped", "hover", "condensed"),
+                              latex_options = "HOLD_position"
+    ) 
+```
+
+```{r, fig.width=7, fig.height=4}
+eta_34 <- ggplot(eta) + aes(x = dim3, y =dim4,label = rownames(eta)) + 
+  geom_point( col = "#C71000FF") + theme_minimal() +
+  lims( x=c(0,1), y=c(0,1)) + geom_text_repel(col = "#C71000FF" ) +
+  labs(title = "Variables - MCA", x = "Dim3 (8%)", y = "Dim4 (7.1%)")
+eta_34
+```
+
+On remarque donc que la dimension 3 est très influencée par le temps de jeu de F et E, et que la dimension 4 se caractérise par le temps de jeu de G ainsi que la densité de joueur present sur place.
+Ces remarques coincident avec les études des axes 3 et 4 précédentes.
+La superposition de ces deux axes donne des détails clés sur les attitudes des joueurs F et G.
+Le fait que leurs coordonnées soient placés ainsi sur le graphique nous ammène a croire qu'ils n'aiment pas jouer les jours ou il y a beaucoup de monde; car les conditions météorologiques dans lesquelles ces joueurs jouent sont assez peu communes pour jouer une partie de golf.
+
+\newpage
+
+# Clustering
+
+Suite à notre ACM, qui a mis en lumière les interactions  entre les variables qualitatives, nous allons procéder à une classification ascendante hiérarchique (CAH). C’est une méthode de clustering qui vise à construire une hiérarchie de groupes (ou clusters) parmi nos observations.
+La CAH va nous permettre de regrouper les individus (jours) en clusters basés sur les profils dégagés par l'ACM, identifiant ainsi des sous-groupes avec des caractéristiques  similaires. Cette technique de clustering hiérarchique est particulièrement utile pour révéler la structure naturelle des données et pour identifier des groupes homogènes au sein de la population étudiée.
+
+```{r}
+golf_data$Holiday <- factor(golf_data$Holiday)
+golf_data <- golf_data %>%
+  mutate(across(starts_with("Play_"), as.factor))
+quali <- c(1, 2, 3, 4, 7, 8, 10, 11, 13, 15, 17, 19, 21, 23 )
+quanti <- c(5, 6, 9, 12, 14, 16, 18, 20, 22, 24)
+acm <- golf_data %>% 
+  mutate(across(Holiday, as.character)) %>% 
+  MCA(quanti.sup = quanti,graph=F, quali.sup=c(2,4))
+```
+
+```{r}
+golf_hcp <- HCPC(acm, graph = FALSE, consol = FALSE,nb.clust = 6)
+```
+
+## Choix des cluster
+
+```{r, fig.width=6, fig.height=2}
+k <- 20
+
+aa <-  (golf_hcp$call$t$within[1:k]/golf_hcp$call$t$within[1]) %>% as.data.frame() %>%
+  ggplot() + aes(x= 1:k,y=`.`) + geom_bar(stat = "identity", fill = col_ind, alpha= 0.8) +
+  labs(title = "Within cluster inertia", x = "") 
+
+ba <- golf_hcp$call$t$inert.gain[1:k] %>% as.data.frame() %>%
+  ggplot() + aes(x= 1:k,y=`.`) + geom_bar(stat = "identity", fill = col_ind, alpha = 0.8) +
+  labs(title = "Between inertia gain", x="")
+
+ggarrange(aa, ba, ncol = 2)
+```
+
+Inertie intra-cluster :
+Pour définir le nombre de cluster à choisir, nous recherchons un point sur le graphique où l'inertie commence à diminuer à un rythme plus lent, un point connu sous le nom de "coude".
+Ici les graphiques nous montre un coude entre 4 et 7 clusters. 
+
+Inertie inter-clusters :
+Des valeurs plus élevées indiquent un meilleur contraste entre les clusters. Comme pour l'inertie intra-cluster, nous recherchons une rupture nette où l'augmentation de l'inertie inter-clusters commence à ralentir.
+Ici le graphique nous montre assez distinctement une rupture du gain d’inertie à 6 clusters. 
+Le dendogramme ci-dessous vient confirmer nos hypothèse quant au choix du nombre de cluster. La rupture à 6 clusters est facilement visible. 
+
+## Dendogramme
+
+```{r, fig.width=6, fig.height=3}
+fviz_dend(golf_hcp, cex = 0.3, 
+          k_colors = pal_js ,
+           main = "Classification sur l'ACM") 
+```
+
+\newpage
+
+## Visualisation des clusters
+
+```{r}
+golf_hcp_consol <- HCPC(acm ,graph=FALSE, consol=TRUE, nb.clust = 6)
+```
+
+```{r}
+fviz_cluster(golf_hcp_consol, geom="point", ellipse = TRUE, show.clust.cent = FALSE,
+               palette = pal_js, 
+               ggtheme = theme_minimal()) +
+    labs(title= "Avec consolidation") 
+```
+
+Le premier plan factoriel est le seul plan où l'on remarque assez distinctement les clusters. 
+
+## Parangons
+
+```{r}
+para <- golf_hcp_consol$desc.ind$para
+dist <- golf_hcp_consol$desc.ind$dist 
+```
+
+```{r}
+par1 <- names(para[[1]])
+par2 <- names(para[[2]])
+par3 <- names(para[[3]])
+par4 <- names(para[[4]])
+par5 <- names(para[[5]])
+par6 <- names(para[[6]])
+```
+
+### Cluster 1 
+
+```{r}
+t(golf_data[par1,]) %>% kable() %>%
+  kable_styling( 
+    full_width = TRUE,
+    position = "center", font_size = 8,
+    bootstrap_options = c("striped", "hover", "condensed"),
+    latex_options = "HOLD_position"
+  )  %>% pack_rows(
+  "Cluster 1", 1, length(par1)
+) 
+```
+
+Le **premier cluster** regroupe des jours caractérisés par des conditions hivernales, avec des températures basses ou négatives et des conditions de neige. La présence de vent est variable, mais cela ne semble pas être un facteur distinctif pour ce cluster. 
+La catégorie de fréquentation est généralement faible à très faible.
+Les jours de ce cluster tombent en hiver, majoritairement le dimanche, ce qui peut refléter une tendance à une fréquentation moindre du golf pendant les week-ends d'hiver, peut-être en raison de conditions météorologiques défavorables. 
+De plus, il semblerait que lors de ces jours, très peu de joueurs ont joué, avec l'exception notable du golfeur F, qui a joué un nombre d'heures modeste à ces dates.
+
+\newpage
+
+### Cluster 2
+
+```{r}
+t(golf_data[par2,]) %>% kable() %>%
+  kable_styling( 
+    full_width = TRUE,
+    position = "center", font_size = 8,
+    bootstrap_options = c("striped", "hover", "condensed"),
+        latex_options = "HOLD_position"
+  )  %>% pack_rows(
+  "Cluster 2", 1, length(par2)
+) 
+```
+
+Le **cluster 2** regroupe des jours qui se caractérisent par des conditions plus tempérées et humides, principalement durant les mois de printemps et d'été. Les températures sont relativement élevées, oscillant autour de 21 à 26 degrés Celsius. L'humidité est également haute, ce qui peut suggérer une atmosphère lourde ou moite. Le niveau de fréquentation est faible à très faible, indiquant que malgré des températures plus clémentes, ces jours n'attirent pas significativement plus de joueurs.
+Les conditions météorologiques varient de la pluie au soleil, avec des jours non venteux et venteux représentés, mais il semble que la pluie soit une condition commune au sein de ce cluster. Ceci, combiné à l'humidité élevée, pourrait dissuader les joueurs de sortir, même si les températures sont agréables.
+Le golfeur G semble être le seul joueur actif durant ces jours.
+
+\newpage
+
+
+### Cluster 3
+
+```{r}
+t(golf_data[par3,]) %>% kable() %>%
+  kable_styling( 
+    full_width = TRUE,
+    position = "center", font_size = 8,
+    bootstrap_options = c("striped", "hover", "condensed"),
+            latex_options = "HOLD_position"
+  )  %>% pack_rows(
+  "Cluster 3", 1, length(par3)
+) 
+```
+
+Le **cluster 3** semble représenter des jours durant la fin du printemps et l'été, majoritairement des jeudis, avec des températures modérément chaudes allant de 15.9 à 22.7 degrés Celsius. L'humidité est relativement stable, et les conditions météorologiques sont majoritairement couvertes, avec un jour de pluie observé. La fréquentation est qualifiée de faible, ce qui peut être attribué aux jours couverts qui pourraient dissuader les joueurs de sortir, même si les températures sont agréables.
+Les jours sont généralement non venteux, ce qui pourrait être considéré comme des conditions favorables pour jouer au golf, cependant, cela ne se reflète pas dans la fréquentation. Aucun des joueurs (A à G) n'a joué ces jours-là, ce qui indique que malgré des conditions qui ne sont pas extrêmes, d'autres facteurs peuvent influencer la décision de ne pas jouer au golf.
+Le cluster 3 représente des jours où, bien que les conditions météorologiques ne soient pas défavorables, la fréquentation reste faible, peut-être en raison d'autres variables non capturées dans les données disponibles.
+
+\newpage
+
+
+### Cluster 4
+
+```{r}
+t(golf_data[par4,]) %>% kable() %>%
+  kable_styling( 
+    full_width = TRUE,
+    position = "center", font_size = 8,
+    bootstrap_options = c("striped", "hover", "condensed"),
+            latex_options = "HOLD_position"
+  )  %>% pack_rows(
+  "Cluster 4", 1, length(par4)
+) 
+```
+
+Le **cluster 4** se compose de jours caractérisés par une variété de conditions météorologiques couvertes, mais avec une fréquentation relativement plus élevée par rapport aux autres clusters précédemment examinés. Les températures varient de fraîches à modérées, allant de 2.7 à 11.4 degrés Celsius, et ces jours se répartissent entre les saisons de l'hiver au printemps.
+L'humidité est moyenne à élevée, ce qui est typique des jours couverts, et le niveau de vent est non venteux, ce qui pourrait être considéré comme confortable pour jouer au golf. Malgré le manque de soleil, la fréquentation est catégorisée de "Moyenne" à "Élevée", ce qui indique que ces conditions ne dissuadent pas nécessairement les joueurs.
+Le golfeur D semble jouer régulièrement durant ces jours, indépendamment des autres conditions, avec un nombre d'heures de jeu consistent.
+
+\newpage
+
+
+### Cluster 5
+
+```{r}
+t(golf_data[par5,]) %>% kable() %>%
+  kable_styling( 
+    full_width = TRUE,
+    position = "center", font_size = 8,
+    bootstrap_options = c("striped", "hover", "condensed"),
+            latex_options = "HOLD_position"
+  )  %>% pack_rows(
+  "Cluster 5", 1, length(par5)
+) 
+```
+
+Le **cluster 5** regroupe des jours caractérisés par des conditions météorologiques ensoleillées, traversant différentes saisons de l'année, principalement au printemps et en automne. Les températures varient de fraîches à tempérées, avec une humidité modérée. Le vent est généralement absent, et le niveau de fréquentation est décrit comme élevé, malgré la catégorisation de "Très faible" à "Élevée".
+Ces jours se produisent durant la semaine, plus précisément le mercredi, ce qui pourrait indiquer une tendance à une activité régulière de golf en milieu de semaine lorsque les conditions météorologiques sont favorables. Le golfeur E a joué durant ces jours, avec un nombre d'heures de jeu qui reste assez constant.
+
+\newpage
+
+
+### Cluster 6
+
+```{r}
+t(golf_data[par6,]) %>% kable() %>%
+  kable_styling( 
+    full_width = TRUE,
+    position = "center", font_size = 8,
+    bootstrap_options = c("striped", "hover", "condensed"),
+            latex_options = "HOLD_position"
+  )  %>% pack_rows(
+  "Cluster 6", 1, length(par6)
+) 
+```
+
+
+Le **cluster 6** semble représenter des jours de week-end avec un niveau de fréquentation élevé à très élevé et des conditions météorologiques ensoleillées. Les températures varient d'une fraîcheur automnale et printanière à un temps plus chaud, mais restent relativement modérées. Il y a une constance dans les conditions venteuses, ce qui ne semble pas dissuader la fréquentation des terrains.
+Ce cluster se distingue par l'activité de deux golfeurs (A et C) qui ont joué ces jours-là, indiquant une participation régulière malgré des variations de température et la présence de vent. Les autres golfeurs (B, D, E, F, G) ne semblent pas avoir été actifs durant ces jours spécifiques.
+En somme, le cluster 6 réunit des week-ends attrayants pour le golf avec du soleil et une bonne fréquentation, indépendamment des conditions venteuses, suggérant que ces facteurs ne sont pas un obstacle majeur à la pratique du golf pour certains joueurs réguliers.
+
+\newpage
+
+# Conclusion générales
+
+La présente analyse a pour objectif de comprendre comment les conditions météorologiques et les caractéristiques temporelles influencent la fréquentation des terrains de golf et le temps de jeu des joueurs. À travers une série d'Analyses , nous avons pu identifier plusieurs tendances et préférences significatives.
+
+L’ACP a révélé que les joueurs A et C sont particulièrement enclins à jouer les jours moins humides et préfèrent les jours de forte affluence, suggérant qu'ils pourraient jouer ensemble ou que leurs temps de jeu sont liés.
+ La corrélation positive entre leurs temps de jeu renforce cette hypothèse. Le joueur B, quant à lui, semble moins sensible aux conditions météorologiques mais a tendance à jouer plus longtemps quand il y a davantage de monde sur le terrain, indiquant que la socialisation ou la compétition pourrait être un facteur motivant.
+Le joueur D, en revanche, est dissuadé par la chaleur et l'humidité, et préfère éviter le golf dans ces conditions, tout comme le joueur B, avec lequel il partage des temps de jeu corrélés positivement, suggérant des préférences météorologiques similaires ou des disponibilités concordantes. Le joueur E montre des préférences météorologiques comparables à celles des joueurs A et C, ce qui pourrait indiquer une tendance au jeu en groupe ou des préférences pour des conditions de jeu spécifiques.
+Les joueurs F et G présentent des comportements contrastés : F préfère les jours froids,
+tandis que G opte pour des jours chauds et humides, ce dernier évitant les jours de forte fréquentation. Cette préférence de G pour les jours moins fréquentés semble être une stratégie délibérée pour profiter d'un terrain plus calme, ce qui est corroboré par la corrélation négative entre l'humidité et la fréquentation.
+
+Nos AFC ont approfondi la compréhension de ces comportements en mettant en lumière les liens entre les variables qualitatives telles que les conditions météorologiques, les jours de la semaine et les mois et le niveau de fréquentation. Ces analyses ont confirmé que les jours ensoleillés et en particulier durant les week-ends, attirent une fréquentation plus élevée, indépendamment des saisons. Les jours couverts, bien que moins prisés, voient tout de même une participation régulière de certains joueurs déterminés.
+
+Les résultats de l’ACM et de la classification hiérarchique ont fourni un aperçu des groupes de jours et de joueurs avec des caractéristiques communes. Nous avons identifié des clusters distincts reflétant des jours de faible activité en raison de conditions hivernales défavorables, des jours de pluie pendant les saisons plus chaudes qui dissuadent la plupart des joueurs, et des week-ends ensoleillés où l'activité de golf est plus intense.
+En conclusion, notre analyse démontre un lien manifeste entre les conditions météorologiques, la fréquentation et les préférences des joueurs de golf. Les jours ensoleillés et tempérés favorisent une fréquentation plus élevée et des temps de jeu prolongés, tandis que les conditions extrêmes comme la neige ou la forte humidité ont l'effet inverse. Les jours de semaine montrent des tendances de fréquentation modérée, avec des différences marquées entre les joueurs en fonction de leurs préférences météorologiques individuelles. 
+
+
